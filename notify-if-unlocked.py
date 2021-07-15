@@ -15,7 +15,7 @@
 # can run non-interactively.
 #
 # If the door is left unlocked, the notification command will be invoked.
-# (And, for reasons explained in the source, the notification command must
+# (And, for reasons explained in the source, the notification command cannot
 # use escaping to prevent whitespace splitting.)
 #
 # By John Frear <software YouKnowTheDelimiter frear.com>
