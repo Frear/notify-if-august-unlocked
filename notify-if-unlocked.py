@@ -168,6 +168,24 @@ if args.auth != None:
     print("Auth successful - you no longer need to use the --auth arugmnet")
     exit(0)
 
+# Print detailed lock status - get_lock_detail must be called by caller
+def print_lock_detail(now, lockdetail):
+    if lockdetail.bridge_is_online:
+        lockdate = str(lockdetail.lock_status_datetime)
+        doordate = str(lockdetail.door_state_datetime)
+    else:
+        lockdate = "unknown"
+        doordate = "unknown"
+    print(now,
+          "Lock", lockdetail.device_name,
+          "batt level", lockdetail.battery_level,
+          "serial", lockdetail.serial_number,
+          "firmware", lockdetail.firmware_version,
+          "model", lockdetail.model,
+          "doorsense", lockdetail.doorsense,
+          "bridge", lockdetail.bridge_is_online,
+          "lock status date", lockdate,
+          "door status date", doordate)
 
 locks = api.get_locks(authentication.access_token)
 print("Using lock(s):", locks)
@@ -207,22 +225,7 @@ while True:
                   "Door", doorstatus)
             # Print extended detail the first time we see a lock
             lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
-            if lockdetail.bridge_is_online:
-                lockdate = str(lockdetail.lock_status_datetime)
-                doordate = str(lockdetail.door_state_datetime)
-            else:
-                lockdate = "unknown"
-                doordate = "unknown"
-            print(now,
-                  "Lock", lockdetail.device_name,
-                  "batt level", lockdetail.battery_level,
-                  "serial", lockdetail.serial_number,
-                  "firmware", lockdetail.firmware_version,
-                  "model", lockdetail.model,
-                  "doorsense", lockdetail.doorsense,
-                  "bridge", lockdetail.bridge_is_online,
-                  "lock status date", lockdate,
-                  "door status date", doordate)
+            print_lock_detail(now, lockdetail)
             continue
         if ( lock.is_operable != prev_lock_state[lock]['operable'] ):
             print(now,
@@ -264,16 +267,22 @@ while True:
                     # locked, their systems continue to say it is unlocked.
                     # This is also true when using their native phone app.
                     # The correct state seems to be obtainable by viewing the
-                    # lock history and then going back and viewing the lock
-                    # state once more.  Let's do that here in our app.
-                    lockstatus = api.get_house_activities(authentication.access_token, lock.house_id)
-                    lockstatus = api.lock_return_activities(authentication.access_token, lock.device_id)
+                    # lock history on the phone, or the overall house status,
+                    # and then going back and viewing the lock state once more.
+                    # Let's do that here in our app.
+                    api.get_house(authentication.access_token, lock.house_id)
+                    api.get_house_activities(authentication.access_token, lock.house_id)
+                    lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
                     print(now, "August says lock is unlocked and door closed - nudging to make sure")
+                    print_lock_detail(now, lockdetail)
                     prev_lock_state[lock]['bugfix_query'] = True
-                    skip_next_polling_delay = True
+                    # The bug is hard to repro, it occurs intermittently. Rapid
+                    # testing also seems to trigger different problems, possibly
+                    # due to rate limiting within August's infrastructure.
+                    # In any case, let's wait an interval after nudging.
+                    skip_next_polling_delay = False
                 else:
                     # Send a notification
                     print(now, "** Sending notification **")
                     prev_lock_state[lock]['notified'] = True
-                    #subprocess.run(["echo", "hey"])
                     subprocess.run(args.notification_command.split())
