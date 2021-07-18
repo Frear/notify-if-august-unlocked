@@ -1,0 +1,36 @@
+Authentication:
+    def get_session(self, install_id, identifier, password):
+    def send_verification_code(self, access_token, login_method, username):
+    def validate_verification_code( self, access_token, login_method, username, verification_code):
+      return self._dict_to_api(
+                            self._build_validate_verification_code_request(
+                                            access_token, login_method, username, verification_code)
+    def refresh_access_token(self, access_token):
+
+State change:
+    def lock(self, access_token, lock_id):
+    def unlock(self, access_token, lock_id):
+    def lock_return_activities(self, access_token, lock_id):
+    def unlock_return_activities(self, access_token, lock_id):
+
+Query:
+  def get_houses(self, access_token):
+    return self._dict_to_api(self._build_get_houses_request(access_token))
+  def get_house(self, access_token, house_id):
+  def get_house_activities(self, access_token, house_id, limit=8):
+  def get_locks(self, access_token):
+    Okay for guest
+  def get_operable_locks(self, access_token):
+    Not okay for guest
+  def get_lock_detail(self, access_token, lock_id):
+    Works for guest, but only shows if lock is locked or unlocked if owner
+  def get_lock_status(self, access_token, lock_id, door_status=False):
+    Not okay for guest
+  def get_lock_door_status(self, access_token, lock_id, lock_status=False):
+    Not okay for guest
+  def get_pins(self, access_token, lock_id):
+  def get_doorbells(self, access_token):
+    return _process_doorbells_json(self._dict_to_api(self._build_get_doorbells_request(access_token)).json())
+  def get_doorbell_detail(self, access_token, doorbell_id):
+
+  def wakeup_doorbell(self, access_token, doorbell_id):
