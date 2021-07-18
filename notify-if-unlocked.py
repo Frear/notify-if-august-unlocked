@@ -47,6 +47,8 @@ from getpass import getpass
 # token file, it isn't left writable
 from os import umask
 
+import dateutil
+
 # Doing this so we can call out to the aws cli aws
 # because I don't want to code the aws boto3 libs into here now.
 # Besides, calling out to an external command is more flexible anyway.
@@ -167,32 +169,25 @@ if args.auth != None:
     exit(0)
 
 
-# If the number of operable locks changes while we are running,
-# this program will need to be restarted to pick up the changes.
-locks = api.get_operable_locks(authentication.access_token)
-print("Using operable lock(s):", locks)
+locks = api.get_locks(authentication.access_token)
+print("Using lock(s):", locks)
 # prev_lock_state will store the results from get_lock_status
 # and the time, and will only be updated when the lock
 # status changes.
 prev_lock_state = {}
+skip_next_polling_delay = True
 while True:
-    if len(prev_lock_state) != 0:
+    if not skip_next_polling_delay:
         # No need to wait before making an api call if this is our
         # first pass.  But wait if this is an nth iteration.
         sleep(args.polling_interval)
+    else:
+        skip_next_polling_delay = False
     for lock in locks:
         now = datetime.now(timezone.utc).astimezone()
         if args.verbose:
             print(now, "checking status of", lock.device_name)
-        #print("Lock is", lock)
-        #  Lock is Lock(id=0123456789ABCDEF0123456789ABCDEF, name=MY LOCK, house_id=01234567-89ab-cdef-0123-456789abcdef)
-        #print("Lock [" + lock.device_name + "]")
-        #  Lock [MY LOCK]
-        lockstatus, doorstatus = api.get_lock_status(authentication.access_token,
-                                                     lock.device_id,
-                                                     door_status=True)
-        #print("lock status is", lockstatus)
-        #print("door status is", doorstatus)
+        lockstatus, doorstatus = api.get_lock_status(authentication.access_token, lock.device_id, True)
         if not lock in prev_lock_state:
             # If we haven't seen this lock before, simply save the
             # state observations and go back into the loop.
@@ -200,13 +195,43 @@ while True:
                 "statechange_time": now,
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
-                "notified": False
+                "notified": False,
+                "operable": lock.is_operable,
+                "bugfix_query": False
             }
             print(now,
                   "Lock", lock.device_name,
                   "state is:",
+                  "operable", lock.is_operable,
                   "Lock", lockstatus,
                   "Door", doorstatus)
+            # Print extended detail the first time we see a lock
+            lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
+            if lockdetail.bridge_is_online:
+                lockdate = str(lockdetail.lock_status_datetime)
+                doordate = str(lockdetail.door_state_datetime)
+            else:
+                lockdate = "unknown"
+                doordate = "unknown"
+            print(now,
+                  "Lock", lockdetail.device_name,
+                  "batt level", lockdetail.battery_level,
+                  "serial", lockdetail.serial_number,
+                  "firmware", lockdetail.firmware_version,
+                  "model", lockdetail.model,
+                  "doorsense", lockdetail.doorsense,
+                  "bridge", lockdetail.bridge_is_online,
+                  "lock status date", lockdate,
+                  "door status date", doordate)
+            continue
+        if ( lock.is_operable != prev_lock_state[lock]['operable'] ):
+            print(now,
+                  "lock operable state changed from",
+                  prev_lock_state[lock]['operable'],
+                  "->",
+                  lock.is_operable)
+            prev_lock_state[lock]['operable'] = lock.is_operable
+        if not lock.is_operable:
             continue
         if ( lockstatus != prev_lock_state[lock]['lockstatus'] or
              doorstatus != prev_lock_state[lock]['doorstatus'] ):
@@ -226,23 +251,29 @@ while True:
                 "statechange_time": now,
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
-                "notified": False
+                "notified": False,
+                "operable": lock.is_operable,
+                "bugfix_query": False
             }
         if ( lockstatus == LockStatus.UNLOCKED and
              doorstatus == LockDoorStatus.CLOSED and
              (now - prev_lock_state[lock]['statechange_time']).total_seconds() > args.notification_interval and
              prev_lock_state[lock]['notified'] == False ):
-                # Send a notification
-                print(now, "** Sending notification **")
-                prev_lock_state[lock]['notified'] = True
-                #subprocess.run(["echo", "hey"])
-                subprocess.run(args.notification_command.split())
-        #if lockstatus == LockStatus.LOCKED:
-        #    print("Lock is locked")
-        #else:
-        #    print("Lock is status", lockstatus)
-        #if doorstatus == LockDoorStatus.CLOSED:
-        #    print("Door is closed")
-        #else:
-        #    print("Door is status", doorstatus)
-    #break
+                if( prev_lock_state[lock]['bugfix_query'] == False ):
+                    # August seems to have a bug - sometimes when the door is
+                    # locked, their systems continue to say it is unlocked.
+                    # This is also true when using their native phone app.
+                    # The correct state seems to be obtainable by viewing the
+                    # lock history and then going back and viewing the lock
+                    # state once more.  Let's do that here in our app.
+                    lockstatus = api.get_house_activities(authentication.access_token, lock.house_id)
+                    lockstatus = api.lock_return_activities(authentication.access_token, lock.device_id)
+                    print(now, "August says lock is unlocked and door closed - nudging to make sure")
+                    prev_lock_state[lock]['bugfix_query'] = True
+                    skip_next_polling_delay = True
+                else:
+                    # Send a notification
+                    print(now, "** Sending notification **")
+                    prev_lock_state[lock]['notified'] = True
+                    #subprocess.run(["echo", "hey"])
+                    subprocess.run(args.notification_command.split())
