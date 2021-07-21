@@ -220,9 +220,9 @@ while True:
             print(now,
                   "Lock", lock.device_name,
                   "state is:",
-                  "operable", lock.is_operable,
-                  "Lock", lockstatus,
-                  "Door", doorstatus)
+                  "(operable =", str(lock.is_operable) + ")",
+                  "(Lock =", str(lockstatus.value) + ")",
+                  "(Door =", str(doorstatus.value) +")")
             # Print extended detail the first time we see a lock
             lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
             print_lock_detail(now, lockdetail)
@@ -242,14 +242,14 @@ while True:
                   "Lock", lock.device_name,
                   "state changed after",
                       (now - prev_lock_state[lock]['statechange_time']).total_seconds(),
-                  "secs:",
-                      prev_lock_state[lock]['lockstatus'],
+                  "secs. Lock:",
+                      prev_lock_state[lock]['lockstatus'].value,
                       "->",
-                      lockstatus,
-                  "and",
-                      prev_lock_state[lock]['doorstatus'],
+                      lockstatus.value,
+                  "and door:",
+                      prev_lock_state[lock]['doorstatus'].value,
                       "->",
-                      doorstatus)
+                      doorstatus.value)
             prev_lock_state[lock] = {
                 "statechange_time": now,
                 "lockstatus": lockstatus,
