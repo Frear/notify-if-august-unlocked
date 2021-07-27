@@ -214,8 +214,7 @@ while True:
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
                 "notified": False,
-                "operable": lock.is_operable,
-                "bugfix_query": False
+                "operable": lock.is_operable
             }
             print(now,
                   "Lock", lock.device_name,
@@ -255,34 +254,13 @@ while True:
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
                 "notified": False,
-                "operable": lock.is_operable,
-                "bugfix_query": False
+                "operable": lock.is_operable
             }
         if ( lockstatus == LockStatus.UNLOCKED and
              doorstatus == LockDoorStatus.CLOSED and
              (now - prev_lock_state[lock]['statechange_time']).total_seconds() > args.notification_interval and
              prev_lock_state[lock]['notified'] == False ):
-                if( prev_lock_state[lock]['bugfix_query'] == False ):
-                    # August seems to have a bug - sometimes when the door is
-                    # locked, their systems continue to say it is unlocked.
-                    # This is also true when using their native phone app.
-                    # The correct state seems to be obtainable by viewing the
-                    # lock history on the phone, or the overall house status,
-                    # and then going back and viewing the lock state once more.
-                    # Let's do that here in our app.
-                    api.get_house(authentication.access_token, lock.house_id)
-                    api.get_house_activities(authentication.access_token, lock.house_id)
-                    lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
-                    print(now, "August says lock is unlocked and door closed - nudging to make sure")
-                    print_lock_detail(now, lockdetail)
-                    prev_lock_state[lock]['bugfix_query'] = True
-                    # The bug is hard to repro, it occurs intermittently. Rapid
-                    # testing also seems to trigger different problems, possibly
-                    # due to rate limiting within August's infrastructure.
-                    # In any case, let's wait an interval after nudging.
-                    skip_next_polling_delay = False
-                else:
-                    # Send a notification
-                    print(now, "** Sending notification **")
-                    prev_lock_state[lock]['notified'] = True
-                    subprocess.run(args.notification_command.split())
+                # Send a notification
+                print(now, "** Sending notification **")
+                prev_lock_state[lock]['notified'] = True
+                subprocess.run(args.notification_command.split())
