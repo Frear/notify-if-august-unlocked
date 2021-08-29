@@ -92,6 +92,11 @@ parser.add_argument('-c','--notification-command',
                     dest='notification_command',
                     default="echo Provide a notification command",
                     help='A command we\'ll run when it\'s time to notify. Note, quoted args are not supported.')
+parser.add_argument('-b','--battery-print-interval',
+                    dest='batt_print_interval',
+                    type=int,
+                    default=60*60*24/3,
+                    help='How often we will print batt status, in seconds. (0 to disable)')
 parser.add_argument('-v','--verbose',
                     dest='verbose',
                     action='store_true',
@@ -169,23 +174,29 @@ if args.auth != None:
     exit(0)
 
 # Print detailed lock status - get_lock_detail must be called by caller
-def print_lock_detail(now, lockdetail):
+def print_lock_detail(now, lockdetail, battOnly = False):
     if lockdetail.bridge_is_online:
         lockdate = str(lockdetail.lock_status_datetime)
         doordate = str(lockdetail.door_state_datetime)
     else:
         lockdate = "unknown"
         doordate = "unknown"
-    print(now,
-          "Lock", lockdetail.device_name,
-          "batt level", lockdetail.battery_level,
-          "serial", lockdetail.serial_number,
-          "firmware", lockdetail.firmware_version,
-          "model", lockdetail.model,
-          "doorsense", lockdetail.doorsense,
-          "bridge", lockdetail.bridge_is_online,
-          "lock status date", lockdate,
-          "door status date", doordate)
+    if( battOnly ):
+        print(now,
+              "Lock", lockdetail.device_name,
+              "batt level", lockdetail.battery_level,
+              "lock status date", lockdate)
+    else:
+        print(now,
+              "Lock", lockdetail.device_name,
+              "batt level", lockdetail.battery_level,
+              "serial", lockdetail.serial_number,
+              "firmware", lockdetail.firmware_version,
+              "model", lockdetail.model,
+              "doorsense", lockdetail.doorsense,
+              "bridge", lockdetail.bridge_is_online,
+              "lock status date", lockdate,
+              "door status date", doordate)
 
 locks = api.get_locks(authentication.access_token)
 print("Using lock(s):", locks)
@@ -195,26 +206,36 @@ print("Using lock(s):", locks)
 prev_lock_state = {}
 skip_next_polling_delay = True
 while True:
-    if not skip_next_polling_delay:
-        # No need to wait before making an api call if this is our
-        # first pass.  But wait if this is an nth iteration.
-        sleep(args.polling_interval)
-    else:
+
+    # No need to wait before querying our locks if this is our first pass.
+    # We will wait if this is an nth iteration in this loop.
+    if skip_next_polling_delay:
         skip_next_polling_delay = False
+    else:
+        sleep(args.polling_interval)
+
+    # Loop through all of the locks the account sees
     for lock in locks:
+
+        # Save the time and use the same specific time throughout this loop iteration on this lock
         now = datetime.now(timezone.utc).astimezone()
+
         if args.verbose:
             print(now, "checking status of", lock.device_name)
+
+        # Get the lock status, which will be used in the rest of this loop
         lockstatus, doorstatus = api.get_lock_status(authentication.access_token, lock.device_id, True)
+
+        # If we haven't seen this lock before, simply save the
+        # state observation and go back into the loop.
         if not lock in prev_lock_state:
-            # If we haven't seen this lock before, simply save the
-            # state observations and go back into the loop.
             prev_lock_state[lock] = {
                 "statechange_time": now,
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
                 "notified": False,
-                "operable": lock.is_operable
+                "operable": lock.is_operable,
+                "batt_print_time": now
             }
             print(now,
                   "Lock", lock.device_name,
@@ -226,6 +247,8 @@ while True:
             lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
             print_lock_detail(now, lockdetail)
             continue
+
+        # Print a message and abort this loop run if the lock is not operable
         if ( lock.is_operable != prev_lock_state[lock]['operable'] ):
             print(now,
                   "lock operable state changed from",
@@ -235,6 +258,14 @@ while True:
             prev_lock_state[lock]['operable'] = lock.is_operable
         if not lock.is_operable:
             continue
+
+        # Print battery detail every detail_interval seconds
+        if ( (now - prev_lock_state[lock]['batt_print_time']).total_seconds() > args.batt_print_interval ):
+            lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
+            print_lock_detail(now, lockdetail, battOnly = True)
+            prev_lock_state[lock]['batt_print_time'] = now
+
+        # Print a message if the lock status changes
         if ( lockstatus != prev_lock_state[lock]['lockstatus'] or
              doorstatus != prev_lock_state[lock]['doorstatus'] ):
             print(now,
@@ -254,8 +285,11 @@ while True:
                 "lockstatus": lockstatus,
                 "doorstatus": doorstatus,
                 "notified": False,
-                "operable": lock.is_operable
+                "operable": lock.is_operable,
+                "batt_print_time": now
             }
+
+        # Send a notification (the main goal of this program) if the door is left unlocked
         if ( lockstatus == LockStatus.UNLOCKED and
              doorstatus == LockDoorStatus.CLOSED and
              (now - prev_lock_state[lock]['statechange_time']).total_seconds() > args.notification_interval and
