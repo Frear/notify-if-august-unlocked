@@ -259,7 +259,7 @@ while True:
         if not lock.is_operable:
             continue
 
-        # Print battery detail every detail_interval seconds
+        # Print battery detail every batt_print_interval seconds
         if ( (now - prev_lock_state[lock]['batt_print_time']).total_seconds() > args.batt_print_interval ):
             lockdetail = api.get_lock_detail(authentication.access_token, lock.device_id)
             print_lock_detail(now, lockdetail, battOnly = True)
