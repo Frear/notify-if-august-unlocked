@@ -18,7 +18,8 @@ The first time it is run, it must be launched with --auth= so you can input your
 
     usage: notify-if-unlocked.py [-h] [-a {phone,email}] [-f CACHE_FILE]
                                  [-p POLLING_INTERVAL] [-n NOTIFICATION_INTERVAL]
-                                 [-c NOTIFICATION_COMMAND] [-v]
+                                 [-c NOTIFICATION_COMMAND]
+                                 [-b BATT_PRINT_INTERVAL] [-v]
     
     Notify if the door is unlocked.
     
@@ -37,4 +38,7 @@ The first time it is run, it must be launched with --auth= so you can input your
       -c NOTIFICATION_COMMAND, --notification-command NOTIFICATION_COMMAND
                             A command we'll run when it's time to notify. Note,
                             quoted args are not supported.
+      -b BATT_PRINT_INTERVAL, --battery-print-interval BATT_PRINT_INTERVAL
+                            How often we will print batt status, in seconds. (0 to
+                            disable)
       -v, --verbose         Print a message each time the locks are polled
