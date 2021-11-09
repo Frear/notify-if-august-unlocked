@@ -131,9 +131,8 @@ authenticator = Authenticator(api,
                               access_token_cache_file=str(args.cache_file))
 
 authentication = authenticator.authenticate()
-state = authentication.state
 
-if state == AuthenticationState.BAD_PASSWORD:
+if authentication.state == AuthenticationState.BAD_PASSWORD:
     if args.auth == None:
         print("Fatal: You MUST use the --auth argument and re-auth.")
     else:
@@ -142,7 +141,7 @@ if state == AuthenticationState.BAD_PASSWORD:
 
 # Send a validation code and allow the user many chances
 # to enter the right one.
-if state == AuthenticationState.REQUIRES_VALIDATION:
+if authentication.state == AuthenticationState.REQUIRES_VALIDATION:
     # When we write our token cache file, keep the permissions private
     prev_umask = umask(0o077)
     authenticator.send_verification_code()
@@ -157,21 +156,32 @@ if state == AuthenticationState.REQUIRES_VALIDATION:
         print("Fatal: Validation result was", ValidationResult)
         exit(1)
     authentication = authenticator.authenticate()
-    state = authentication.state
     umask(prev_umask)
 
-if state != AuthenticationState.AUTHENTICATED:
-    print("Fatal: Not authenticated. Auth state is", state)
+if authentication.state != AuthenticationState.AUTHENTICATED:
+    print("Fatal: Not authenticated. Auth state is", authentication.state)
     exit(1)
 
 # We only get here if we completed authentication
-#print("Authenticated, state is", state)
+#print("Authenticated, state is", authentication.state)
 if args.auth != None:
     # If authentication was requested and succeeded, exit
     # because this program required stdin for the --auth
     # flag but noramlly runs non-interactively.
     print("Auth successful - you no longer need to use the --auth arugmnet")
     exit(0)
+
+# Print the time remaining in our token at startup
+try:
+    print("Auth token expires in",
+          datetime.strptime(authentication.access_token_expires, "%Y-%m-%dT%H:%M:%S.%fZ").astimezone()
+          -
+          datetime.now(timezone.utc).astimezone(),
+          "at",
+          datetime.strptime(authentication.access_token_expires, "%Y-%m-%dT%H:%M:%S.%fZ").astimezone() )
+except ValueError:
+    print("Auth token expires at", authentication.access_token_expires)
+
 
 # Print detailed lock status - get_lock_detail must be called by caller
 def print_lock_detail(now, lockdetail, battOnly = False):
